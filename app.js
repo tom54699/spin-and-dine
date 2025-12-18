@@ -120,15 +120,16 @@ const storageKey = 'lunch-places-v1';
       }
       if (state.spinning) return;
       state.spinning = true;
-      // 先決定目標切片，計算最終角度，指針朝上 (-π/2)
+      // 預先決定中獎切片，讓指針最終指向該切片中心
       const slice = (2 * Math.PI) / list.length;
+      const pointer = -Math.PI / 2; // 指針在上方、指向圓心
+      const turns = 12 + Math.random() * 4; // 12~16 圈
       const targetIndex = Math.floor(Math.random() * list.length);
-      const pointer = -Math.PI / 2;
-      const turns = 12 + Math.random() * 4; // 12~16 圈，體感類似 piliapp
-      const finalAngle = pointer - slice * (targetIndex + 0.5) + turns * 2 * Math.PI;
+      const baseAngle = pointer - (targetIndex * slice + slice / 2);
+      const finalAngle = baseAngle + turns * 2 * Math.PI;
+      const picked = list[targetIndex];
       // 時間略長，減速明顯
       const duration = 3200 + Math.random() * 700; // 3.2s ~ 3.9s
-      const targetPlace = list[targetIndex];
       const start = performance.now();
 
       function animate(now) {
@@ -140,7 +141,7 @@ const storageKey = 'lunch-places-v1';
         if (progress < 1) {
           state.animationId = requestAnimationFrame(animate);
         } else {
-          finishSpin(targetPlace, finalAngle);
+          finishSpin(picked, finalAngle);
         }
       }
       state.animationId = requestAnimationFrame(animate);
