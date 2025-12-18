@@ -160,6 +160,11 @@ textarea {
   text-align: left;
   font-size: 14px;
 }
+.list input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
 .list th { color: var(--muted); font-weight: 700; }
 .list td { color: var(--text); }
 

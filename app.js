@@ -37,12 +37,21 @@ const storageKey = 'lunch-places-v1';
       exportBtn.addEventListener('click', exportData);
       importLabel.addEventListener('click', () => importFile.click());
       importFile.addEventListener('change', importData);
+      // 快捷鍵：空白鍵開始、R 重置指針（不清資料）
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') { e.preventDefault(); spin(); }
+        if (e.code === 'KeyR') {
+          state.currentAngle = 0;
+          drawWheel();
+        }
+      });
     }
 
     function loadPlaces() {
       try {
         const raw = localStorage.getItem(storageKey);
-        return raw ? JSON.parse(raw) : [];
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list.map(p => ({ ...p, enabled: p.enabled !== false })) : [];
       } catch (e) {
         console.warn('讀取失敗，改用空名單', e);
         return [];
@@ -97,9 +106,10 @@ const storageKey = 'lunch-places-v1';
 
     function filteredPlaces() {
       const days = filterSel.value === 'none' ? 0 : Number(filterSel.value);
-      if (!days) return state.places;
+      const enabledList = state.places.filter(p => p.enabled !== false);
+      if (!days) return enabledList;
       const cutoff = Date.now() - days * 86400000;
-      return state.places.filter(p => !p.last || new Date(p.last).getTime() < cutoff);
+      return enabledList.filter(p => !p.last || new Date(p.last).getTime() < cutoff);
     }
 
     function spin() {
@@ -110,19 +120,27 @@ const storageKey = 'lunch-places-v1';
       }
       if (state.spinning) return;
       state.spinning = true;
-      const duration = 3000 + Math.random() * 1500;
-      const finalAngle = state.currentAngle + Math.PI * 6 + Math.random() * Math.PI * 4;
+      // 先決定目標切片，計算最終角度，指針朝上 (-π/2)
+      const slice = (2 * Math.PI) / list.length;
+      const targetIndex = Math.floor(Math.random() * list.length);
+      const pointer = -Math.PI / 2;
+      const turns = 12 + Math.random() * 4; // 12~16 圈，體感類似 piliapp
+      const finalAngle = pointer - slice * (targetIndex + 0.5) + turns * 2 * Math.PI;
+      // 時間略長，減速明顯
+      const duration = 3200 + Math.random() * 700; // 3.2s ~ 3.9s
+      const targetPlace = list[targetIndex];
       const start = performance.now();
 
       function animate(now) {
         const progress = Math.min(1, (now - start) / duration);
-        const ease = 1 - Math.pow(1 - progress, 3);
+        // 自訂 easing（接近 cubic-bezier(.12,.9,.18,1)）
+        const ease = cubicBezierEase(progress);
         state.currentAngle = lerp(state.currentAngle, finalAngle, ease);
         drawWheel();
         if (progress < 1) {
           state.animationId = requestAnimationFrame(animate);
         } else {
-          finishSpin(list, finalAngle);
+          finishSpin(targetPlace, finalAngle);
         }
       }
       state.animationId = requestAnimationFrame(animate);
@@ -130,26 +148,38 @@ const storageKey = 'lunch-places-v1';
 
     function lerp(a, b, t) { return a + (b - a) * t; }
 
-    function finishSpin(list, angle) {
-      const normAngle = ((angle % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
-      const slice = (2*Math.PI) / list.length;
-      const index = Math.floor(((2*Math.PI - normAngle + Math.PI/2) % (2*Math.PI)) / slice);
-      const picked = list[index];
-      picked.last = new Date().toISOString();
-      persist();
-      renderTable();
-      updateStats();
-      pickedEl.textContent = `今天吃：${picked.name}`;
-      pickedEl.classList.remove('hidden');
-      toast(`選中了 ${picked.name}`);
-      state.spinning = false;
+    // 近似 cubic-bezier(.12,.9,.18,1) 的 easing，模擬 PiliApp 減速曲線
+    function cubicBezierEase(t) {
+      const p1 = { x: 0.12, y: 0.9 };
+      const p2 = { x: 0.18, y: 1 };
+      const u = 1 - t;
+      return (3 * u * u * t * p1.y) + (3 * u * t * t * p2.y) + (t * t * t);
+    }
+
+    function finishSpin(picked, angle) {
+      try {
+        picked.last = new Date().toISOString();
+        persist();
+        renderTable();
+        updateStats();
+        pickedEl.textContent = `今天吃：${picked.name}`;
+        pickedEl.classList.remove('hidden');
+        toast(`選中了 ${picked.name}`);
+        // 將角度收斂在 0~2π，避免累積誤差
+        state.currentAngle = ((angle % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+      } catch (err) {
+        console.error('finishSpin error', err);
+        toast('轉盤發生錯誤，請再試一次');
+      } finally {
+        state.spinning = false;
+      }
     }
 
     function addPlace() {
       const name = nameInput.value.trim();
       if (!name) return toast('請輸入餐廳名稱');
       if (state.places.some(p => p.name === name)) return toast('已存在相同名稱');
-      state.places.push({ name, last: null });
+      state.places.push({ name, last: null, enabled: true });
       nameInput.value = '';
       persist();
       drawWheel();
@@ -183,6 +213,9 @@ const storageKey = 'lunch-places-v1';
         const tr = document.createElement('tr');
         const last = p.last ? formatDate(p.last) : '—';
         tr.innerHTML = `
+          <td style="text-align:center">
+            <input type="checkbox" ${p.enabled !== false ? 'checked' : ''} onchange="toggleEnabled('${escapeAttr(p.name)}', this.checked)" />
+          </td>
           <td>${p.name}</td>
           <td>${last}</td>
           <td>
@@ -198,7 +231,8 @@ const storageKey = 'lunch-places-v1';
     function updateStats() {
       const total = state.places.length;
       const filtered = filteredPlaces().length;
-      statEl.textContent = `目前名單 ${filtered}/${total} 家符合規則`;
+      const enabled = state.places.filter(p => p.enabled !== false).length;
+      statEl.textContent = `轉盤名單 ${filtered}/${enabled}（已啟用 ${enabled}/${total}）`;
     }
 
     function formatDate(str) {
@@ -235,7 +269,7 @@ const storageKey = 'lunch-places-v1';
         try {
           const data = JSON.parse(e.target.result);
           if (!Array.isArray(data)) throw new Error('格式不符');
-          state.places = data.map(item => ({ name: String(item.name), last: item.last || null }));
+          state.places = data.map(item => ({ name: String(item.name), last: item.last || null, enabled: item.enabled !== false }));
           persist();
           drawWheel();
           renderTable();
@@ -250,3 +284,13 @@ const storageKey = 'lunch-places-v1';
     }
 
     function escapeAttr(str) { return str.replace(/"/g, '&quot;').replace(/'/g, "&#39;"); }
+
+    function toggleEnabled(name, value) {
+      const item = state.places.find(p => p.name === name);
+      if (item) {
+        item.enabled = value;
+        persist();
+        drawWheel();
+        updateStats();
+      }
+    }
