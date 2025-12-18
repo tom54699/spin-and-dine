@@ -122,12 +122,11 @@ const storageKey = 'lunch-places-v1';
       state.spinning = true;
       // 預先決定中獎切片，讓指針最終指向該切片中心
       const slice = (2 * Math.PI) / list.length;
-      const pointer = -Math.PI / 2; // 指針在上方、指向圓心
+      const pointer = -Math.PI / 2; // 指針在上方，指向圓心（角度朝上）
       const turns = 12 + Math.random() * 4; // 12~16 圈
       const targetIndex = Math.floor(Math.random() * list.length);
       const baseAngle = pointer - (targetIndex * slice + slice / 2);
       const finalAngle = baseAngle + turns * 2 * Math.PI;
-      const picked = list[targetIndex];
       // 時間略長，減速明顯
       const duration = 3200 + Math.random() * 700; // 3.2s ~ 3.9s
       const start = performance.now();
@@ -141,7 +140,7 @@ const storageKey = 'lunch-places-v1';
         if (progress < 1) {
           state.animationId = requestAnimationFrame(animate);
         } else {
-          finishSpin(picked, finalAngle);
+          finishSpin(list, finalAngle);
         }
       }
       state.animationId = requestAnimationFrame(animate);
@@ -157,8 +156,13 @@ const storageKey = 'lunch-places-v1';
       return (3 * u * u * t * p1.y) + (3 * u * t * t * p2.y) + (t * t * t);
     }
 
-    function finishSpin(picked, angle) {
+    function finishSpin(list, angle) {
       try {
+        const slice = (2 * Math.PI) / list.length;
+        const pointer = -Math.PI / 2;
+        const ang = ((pointer - angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+        const index = Math.floor((ang + 1e-6) / slice) % list.length;
+        const picked = list[index];
         picked.last = new Date().toISOString();
         persist();
         renderTable();
