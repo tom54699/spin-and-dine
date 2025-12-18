@@ -27,7 +27,9 @@ python -m http.server 8000
 2. 推送到 `main` 分支，GitHub Actions 會自動執行 `.github/workflows/pages.yml` 並發布。
 
 ## 主要檔案
-- `index.html`：轉盤與餐廳名單的全部前端程式。
+- `index.html`：頁面結構。
+- `style.css`：版面與深色主題樣式。
+- `app.js`：轉盤、名單、匯入匯出的互動邏輯。
 - `.github/workflows/pages.yml`：GitHub Pages 自動部署流程。
 
 ## 匯出 / 匯入資料
